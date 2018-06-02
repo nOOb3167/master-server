@@ -3,7 +3,7 @@ import os, re, sys, json, time, socket
 from threading import Thread, RLock
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask import Flask, request, send_from_directory
+from flask import Flask, request, send_from_directory, make_response
 
 
 # Set up scheduler
@@ -32,6 +32,48 @@ def list():
 	return send_from_directory(app.static_folder, "list.json",
 			cache_timeout=0)
 
+def hash_rawtouser(rawhash):
+	hardcoded_secret_salt = "abcdefgh12345678".encode("UTF-8")
+	import hmac, hashlib, base64
+	rawhash_b = rawhash.encode("UTF-8")
+	dig = hmac.new(hardcoded_secret_salt, rawhash_b, hashlib.sha256).digest()
+	b64 = base64.b64encode(dig).decode("UTF-8")
+	return b64
+
+@app.route("/announce_user", methods=["GET", "POST"])
+def announce_user():
+	data = request.values["json"]
+
+	try:
+		user = json.loads(data)
+	except:
+		return "Unable to process JSON data.", 400
+
+	if type(user) != dict:
+		return "JSON data is not an object.", 400
+
+	print(user)
+
+
+	if not ("action" in user or user["action"] not in ("userlist",)):
+		return "Invalid action field.", 400
+	if not "hash" in user:
+		return "Invalid hash field.", 400
+
+	action = user["action"]
+	rawhash = user["hash"]
+	userhash = hash_rawtouser(rawhash)
+
+	print("h  " + userhash)
+
+	if action == "userlist":
+		pass
+
+	res = make_response("Success")
+	res.status_code = 200
+	res.mimetype = "application/json"
+
+	return res
 
 @app.route("/announce", methods=["GET", "POST"])
 def announce():
