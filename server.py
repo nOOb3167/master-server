@@ -40,6 +40,12 @@ def hash_rawtouser(rawhash):
 	b64 = base64.b64encode(dig).decode("UTF-8")
 	return b64
 
+def respond_json(json):
+	res = make_response(json)
+	res.status_code = 200
+	res.mimetype = "application/json"
+	return res
+
 @app.route("/announce_user", methods=["GET", "POST"])
 def announce_user():
 	data = request.values["json"]
@@ -67,13 +73,13 @@ def announce_user():
 	print("h  " + userhash)
 
 	if action == "userlist":
-		pass
+		res = {
+			"userhash":userhash,
+			"userlist": [ "test0", "test1", "test2" ],
+		}
+		return respond_json(json.dumps(res))
 
-	res = make_response("Success")
-	res.status_code = 200
-	res.mimetype = "application/json"
-
-	return res
+	return respond_json("Fail")
 
 @app.route("/announce", methods=["GET", "POST"])
 def announce():
