@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, re, sys, json, time, socket
+import os, re, sys, json, time, socket, secrets
 from threading import Thread, RLock
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -46,40 +46,112 @@ def respond_json(json):
 	res.mimetype = "application/json"
 	return res
 
+auth_issuances = {} # token : { destination : str, userhash : str }
+parties = {}  # partyhash : { name : str, members : {} }
+partytokens_by_userhash = {}
+
 @app.route("/announce_user", methods=["GET", "POST"])
 def announce_user():
 	data = request.values["json"]
 
 	try:
 		user = json.loads(data)
+		if type(user) != dict:
+			raise TypeError("JSON data is not an object.")
 	except:
 		return "Unable to process JSON data.", 400
 
-	if type(user) != dict:
-		return "JSON data is not an object.", 400
-
 	print(user)
 
+	action = user["action"]
 
-	if not ("action" in user or user["action"] not in ("userlist",)):
-		return "Invalid action field.", 400
+	if action == "auth_get":
+		with serverList.lock:
+			token = user["auth"]["token"]
+			if token not in auth_issuances:
+				return "Invalid token.", 400
+			res = {
+				"issue": auth_issuances[token],
+			}
+			return respond_json(json.dumps(res))
+	if action == "party_by_userhash_get":
+		_userhash = user["party"]["userhash"]
+		with serverList.lock:
+			partytoken = _userhash in partytokens_by_userhash and partytokens_by_userhash[_userhash] or None
+			party = partytoken in parties and parties[partytoken] or None
+			partyname = party and party["name"] or None
+			partymembers = party and party["members"] or None
+		res = {
+			"party": {
+				"token": partytoken,
+				"name": partyname,
+				"members": partymembers,
+				},
+		}
+		return respond_json(json.dumps(res))
+
 	if not "hash" in user:
 		return "Invalid hash field.", 400
 
-	action = user["action"]
 	rawhash = user["hash"]
 	userhash = hash_rawtouser(rawhash)
 
 	print("h  " + userhash)
 
+	if action == "auth_issue":
+		destination = user["auth"]["destination"]
+		token = secrets.token_hex(32)
+		with serverList.lock:
+			issue = {
+				"destination": destination,
+				"userhash": userhash,
+			}
+			auth_issuances[token] = issue
+		res = {
+			"token": token,
+		}
+		return respond_json(json.dumps(res))
 	if action == "userlist":
 		res = {
 			"userhash":userhash,
 			"userlist": [ "test0", "test1", "test2" ],
 		}
 		return respond_json(json.dumps(res))
+	if action == "partylist":
+		with serverList.lock:
+			partylist = [x for x in parties.keys()]
+			partytoken = userhash in partytokens_by_userhash and partytokens_by_userhash[userhash] or None
+			party = partytoken in parties and parties[partytoken] or None
+			partyname = party and party["name"] or None
+			partymembers = party and party["members"] or None
+		res = {
+			"userhash": userhash,
+			"partyself": {
+				"token": partytoken,
+				"name": partyname,
+				"members": partymembers,
+				},
+			"partylist": [ "p0", "p1", "p2" ],
+		}
+		return respond_json(json.dumps(res))
+	if action == "partycreate":
+		name = user["party"]["name"]
+		token = secrets.token_hex(32)
+		with serverList.lock:
+			members = {}
+			members[userhash] = True
+			party = {
+				"name": name,
+				"members": members,
+			}
+			parties[token] = party
+			partytokens_by_userhash[userhash] = token
+		res = {
+			"token": token
+		}
+		return respond_json(json.dumps(res))
 
-	return respond_json("Fail")
+	return "Failure.", 400
 
 @app.route("/announce", methods=["GET", "POST"])
 def announce():
