@@ -47,8 +47,34 @@ def respond_json(json):
 	return res
 
 auth_issuances = {} # token : { destination : str, userhash : str }
-parties = {}  # partyhash : { name : str, members : {} }
+parties = {}  # partytoken : { name : str, members : {} }
 partytokens_by_userhash = {}
+
+def party_leave_all_userhash(userhash):
+	partytoken = userhash in partytokens_by_userhash and partytokens_by_userhash[userhash] or None
+	if not partytoken:
+		return
+	if partytoken:
+		del partytokens_by_userhash[partytoken]
+	party = partytoken in parties and parties[partytoken] or None
+	if party and userhash in party.members:
+		del party.members[userhash]
+
+def party_join(partytoken, userhash):
+	party = partytoken in parties and parties[partytoken] or None
+	assert userhash not in party.members
+	assert userhash not in partytokens_by_userhash
+	party.members[userhash] = True
+	partytokens_by_userhash[userhash] = partytoken
+
+def party_create(partytoken, partyname, userhash):
+	party = {
+		"name": partyname,
+		"members": {},
+	}
+	parties[partytoken] = party
+	party_leave_all_userhash(userhash)
+	party_join(partytoken, userhash)
 
 @app.route("/announce_user", methods=["GET", "POST"])
 def announce_user():
@@ -131,23 +157,24 @@ def announce_user():
 				"name": partyname,
 				"members": partymembers,
 				},
-			"partylist": [ "p0", "p1", "p2" ],
+			"partylist": partylist,
 		}
 		return respond_json(json.dumps(res))
 	if action == "partycreate":
 		name = user["party"]["name"]
 		token = secrets.token_hex(32)
 		with serverList.lock:
-			members = {}
-			members[userhash] = True
-			party = {
-				"name": name,
-				"members": members,
-			}
-			parties[token] = party
-			partytokens_by_userhash[userhash] = token
+			party_create(token, name, userhash)
 		res = {
 			"token": token
+		}
+		return respond_json(json.dumps(res))
+	if action == "partyjoin":
+		token = user["party"]["token"]
+		with serverList.lock:
+			party_leave_all_userhash(userhash)
+			party_join(token, userhash)
+		res = {
 		}
 		return respond_json(json.dumps(res))
 
