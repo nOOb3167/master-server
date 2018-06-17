@@ -47,6 +47,7 @@ def respond_json(json):
 	return res
 
 auth_issuances = {} # token : { destination : str, userhash : str }
+users = {}    # userhash : True
 parties = {}  # partytoken : { name : str, members : {} }
 partytokens_by_userhash = {}
 
@@ -62,9 +63,9 @@ def party_leave_all_userhash(userhash):
 
 def party_join(partytoken, userhash):
 	party = partytoken in parties and parties[partytoken] or None
-	assert userhash not in party.members
+	assert userhash not in party["members"]
 	assert userhash not in partytokens_by_userhash
-	party.members[userhash] = True
+	party["members"][userhash] = True
 	partytokens_by_userhash[userhash] = partytoken
 
 def party_create(partytoken, partyname, userhash):
@@ -87,7 +88,11 @@ def announce_user():
 	except:
 		return "Unable to process JSON data.", 400
 
-	print(user)
+	rawhash = "hash" in user and user["hash"] or None
+	userhash = rawhash and hash_rawtouser(rawhash) or None
+
+	print("  u " + str(user))
+	print("  h " + str(userhash))
 
 	action = user["action"]
 
@@ -119,11 +124,6 @@ def announce_user():
 	if not "hash" in user:
 		return "Invalid hash field.", 400
 
-	rawhash = user["hash"]
-	userhash = hash_rawtouser(rawhash)
-
-	print("h  " + userhash)
-
 	if action == "auth_issue":
 		destination = user["auth"]["destination"]
 		token = secrets.token_hex(32)
@@ -138,9 +138,11 @@ def announce_user():
 		}
 		return respond_json(json.dumps(res))
 	if action == "userlist":
+		with serverList.lock:
+			userlist = [x for x in users.keys()]
 		res = {
-			"userhash":userhash,
-			"userlist": [ "test0", "test1", "test2" ],
+			"userhash": userhash,
+			"userlist": userlist,
 		}
 		return respond_json(json.dumps(res))
 	if action == "partylist":
