@@ -47,9 +47,16 @@ def respond_json(json):
 	return res
 
 auth_issuances = {} # token : { destination : str, userhash : str }
-users = {}    # userhash : True
+users = {}    # userhash : {}
 parties = {}  # partytoken : { name : str, members : {} }
 partytokens_by_userhash = {}
+
+def user_join_if_needed(userhash):
+	if not userhash:
+		return
+	if userhash in users:
+		return
+	users[userhash] = {}
 
 def party_leave_all_userhash(userhash):
 	partytoken = userhash in partytokens_by_userhash and partytokens_by_userhash[userhash] or None
@@ -93,6 +100,8 @@ def announce_user():
 
 	print("  u " + str(user))
 	print("  h " + str(userhash))
+
+	user_join_if_needed(userhash)
 
 	action = user["action"]
 
